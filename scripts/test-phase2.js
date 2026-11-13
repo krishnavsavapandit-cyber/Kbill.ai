@@ -35,6 +35,8 @@ async function setupPhase2Data() {
       workingHoursStart: "09:00",
       workingHoursEnd: "18:00",
       workingDays: "Monday,Tuesday,Wednesday,Thursday,Friday,Saturday", // Closed on Sunday
+      planId: "PRO",
+      planExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       users: {
         create: {
           email: `slotwise-owner-${runId}@test.com`,
@@ -360,7 +362,10 @@ async function runPhase2Suite() {
     promises.push(
       fetch(`${BASE_URL}/api/appointments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Forwarded-For": `198.51.100.${i}`,
+        },
         body: JSON.stringify(reqBody),
       }).then(async (res) => {
         const body = await res.json().catch(() => ({}));

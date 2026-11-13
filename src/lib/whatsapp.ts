@@ -47,6 +47,18 @@ export function verifyMetaSignature(
 }
 
 /**
+ * Checks whether the conversation is within Meta's 24-hour customer service window.
+ * Outside this window, only pre-approved message templates can be sent.
+ */
+export function isWithin24HourWindow(lastMessageAt: Date | string | null | undefined): boolean {
+  if (!lastMessageAt) return false;
+  const time = new Date(lastMessageAt).getTime();
+  if (isNaN(time)) return false;
+  const diffHours = (Date.now() - time) / (1000 * 60 * 60);
+  return diffHours <= 24;
+}
+
+/**
  * Send real WhatsApp text message via Meta Graph API v21.0
  */
 export async function sendWhatsAppTextMessage(

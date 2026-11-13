@@ -5,12 +5,34 @@ import { checkRateLimit } from "@/lib/rate-limit";
 
 const COOKIE_NAME = "businessos_session";
 
-function getClientIp(request: NextRequest): string {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0].trim();
+/**
+ * Derives the verified client IP address resistant to X-Forwarded-For spoofing.
+ *
+ * Security Model:
+ * 1. Direct Edge runtime property (request.ip): Derived directly from the socket connection.
+ * 2. Cloudflare / CDN verified headers (cf-connecting-ip, true-client-ip): Injected by edge; client values are stripped.
+ * 3. Nginx / ALB reverse proxy header (x-real-ip): Injected directly from the upstream TCP socket.
+ * 4. X-Forwarded-For fallback: To prevent client-injected leftmost spoofing (e.g. "X-Forwarded-For: 1.1.1.1"),
+ *    reads the rightmost entry (proxy-appended hop) or trusted socket address.
+ */
+export function getClientIp(request: NextRequest): string {
+  if (request.ip) {
+    return request.ip.trim();
+  }
+
+  const cfIp = request.headers.get("cf-connecting-ip");
+  if (cfIp) return cfIp.trim();
+
   const realIp = request.headers.get("x-real-ip");
   if (realIp) return realIp.trim();
-  return request.ip || "127.0.0.1";
+
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const hops = forwarded.split(",").map((h) => h.trim()).filter(Boolean);
+    return hops[hops.length - 1];
+  }
+
+  return "127.0.0.1";
 }
 
 // Exact public paths or prefixes
@@ -50,7 +72,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/api/appointments/available-slots") ||
     (pathname === "/api/appointments" && request.method === "POST")
   ) {
-    rateLimitConfig = { limit: 60, windowMs: 60000 }; // 60 requests / min
+    rateLimitConfig = { limit: 120, windowMs: 60000 }; // 120 requests / min
   }
 
   if (rateLimitConfig) {

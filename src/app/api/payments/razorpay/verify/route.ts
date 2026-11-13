@@ -134,6 +134,8 @@ export async function POST(req: Request) {
     }
 
     // 7. Atomic Transaction: Mark Payment SUCCESSFUL and Settle Target Invoice / Subscription
+    const effectivePlanId = planId || (existingPayment.metadata ? JSON.parse(existingPayment.metadata)?.planId : null);
+
     const updatedPayment = await prisma.$transaction(async (tx) => {
       await tx.payment.updateMany({
         where: { razorpayOrderId: razorpay_order_id, businessId },
@@ -167,10 +169,26 @@ export async function POST(req: Request) {
       }
 
       // Upgrade subscription if plan purchase
-      const effectivePlanId = planId || (existingPayment.metadata ? JSON.parse(existingPayment.metadata)?.planId : null);
       if (effectivePlanId) {
-        const periodEnd = new Date();
-        periodEnd.setDate(periodEnd.getDate() + 30);
+        const biz = await tx.business.findUnique({
+          where: { id: businessId },
+          select: { planExpiresAt: true },
+        });
+
+        const now = new Date();
+        const currentExpiry =
+          biz?.planExpiresAt && biz.planExpiresAt.getTime() > now.getTime()
+            ? new Date(biz.planExpiresAt)
+            : now;
+        const periodEnd = new Date(currentExpiry.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+        await tx.business.update({
+          where: { id: businessId },
+          data: {
+            planId: effectivePlanId.toUpperCase(),
+            planExpiresAt: periodEnd,
+          },
+        });
 
         const sub = await tx.subscription.findFirst({ where: { businessId } });
         if (sub) {
@@ -215,6 +233,7 @@ export async function POST(req: Request) {
       verified: true,
       paymentId: razorpay_payment_id,
       payment: updatedPayment,
+      planExtended: Boolean(effectivePlanId),
     });
   } catch (err: any) {
     console.error("Payment verify error:", err);

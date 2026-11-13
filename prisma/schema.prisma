@@ -35,6 +35,9 @@ model Business {
   state             String?
   pincode           String?
   gstin             String?
+  isGstRegistered   Boolean            @default(true)
+  planId            String             @default("FREE")
+  planExpiresAt     DateTime?
   logoUrl           String?
   brandColor        String?            @default("#4F46E5")
   workingHoursStart String             @default("09:00")
@@ -147,6 +150,7 @@ model QuotationItem {
   hsnSac      String?
   quantity    Float     @default(1)
   unitPrice   Float     @default(0)
+  taxRate     Float     @default(18.0)
   amount      Float     @default(0)
   serviceId   String?
 
@@ -200,6 +204,7 @@ model InvoiceItem {
   hsnSac      String?
   quantity    Float    @default(1)
   unitPrice   Float    @default(0)
+  taxRate     Float    @default(18.0)
   amount      Float    @default(0)
   serviceId   String?
 
@@ -258,6 +263,7 @@ model Appointment {
   status        String    @default("CONFIRMED") // PENDING, CONFIRMED, COMPLETED, CANCELLED, NO_SHOW
   customerNotes String?
   staffNotes    String?
+  staffId       String?
   reminderSent  Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

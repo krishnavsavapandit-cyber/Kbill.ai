@@ -51,6 +51,8 @@ async function setupPhase5Data() {
       slug: `ai-tenant-nokey-${runId}`,
       currency: "INR",
       timezone: "Asia/Kolkata",
+      planId: "PRO",
+      planExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       users: {
         create: {
           email: `nokey-ai-${runId}@test.com`,

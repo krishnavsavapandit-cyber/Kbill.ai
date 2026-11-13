@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireBusiness, getSession } from "@/lib/auth";
+import { requireFeature } from "@/lib/plans";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,8 @@ export async function POST(req: Request) {
       serviceId,
       startTime,
       customerNotes,
+      staffId,
+      scopeByService,
       businessSlug,
     } = body;
 
@@ -131,16 +134,29 @@ export async function POST(req: Request) {
       );
     }
 
-    // 4. Fast pre-check to eliminate unnecessary write contention
+    // 4. Plan Gating: Check appointment creation limits
+    const planCheck = await requireFeature(targetBusinessId!, "create_appointment");
+    if (!planCheck.ok) return planCheck.response;
+
+    // 5. Scoped Overlap Filter (per-staff, per-service, or business-wide)
+    const conflictFilter: any = {
+      businessId: targetBusinessId!,
+      status: { notIn: ["CANCELLED", "NO_SHOW"] },
+      AND: [
+        { startTime: { lt: endDate } },
+        { endTime: { gt: startDate } },
+      ],
+    };
+
+    if (staffId) {
+      conflictFilter.staffId = staffId;
+    } else if (scopeByService) {
+      conflictFilter.serviceId = service.id;
+    }
+
+    // Fast pre-check to eliminate unnecessary write contention
     const preCheckConflict = await prisma.appointment.findFirst({
-      where: {
-        businessId: targetBusinessId,
-        status: { notIn: ["CANCELLED", "NO_SHOW"] },
-        AND: [
-          { startTime: { lt: endDate } },
-          { endTime: { gt: startDate } },
-        ],
-      },
+      where: conflictFilter,
     });
 
     if (preCheckConflict) {
@@ -191,16 +207,9 @@ export async function POST(req: Request) {
     try {
       const appointment = await prisma.$transaction(
         async (tx) => {
-          // Atomic interval overlap check inside transaction
+          // Serialized atomic interval overlap check inside transaction
           const conflict = await tx.appointment.findFirst({
-            where: {
-              businessId: targetBusinessId!,
-              status: { notIn: ["CANCELLED", "NO_SHOW"] },
-              AND: [
-                { startTime: { lt: endDate } },
-                { endTime: { gt: startDate } },
-              ],
-            },
+            where: conflictFilter,
           });
 
           if (conflict) {
@@ -214,6 +223,7 @@ export async function POST(req: Request) {
               businessId: targetBusinessId!,
               customerId: resolvedCustomerId,
               serviceId: service.id,
+              staffId: staffId ? String(staffId).trim() : null,
               startTime: startDate, // Stored in UTC
               endTime: endDate,     // Stored in UTC
               status: "CONFIRMED",

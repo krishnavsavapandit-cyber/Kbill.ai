@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { sendWhatsAppTextMessage } from "@/lib/whatsapp";
+import { sendWhatsAppTextMessage, isWithin24HourWindow } from "@/lib/whatsapp";
 import { requireBusiness } from "@/lib/auth";
 import { decryptSecret } from "@/lib/encryption";
 
@@ -109,6 +109,25 @@ export async function POST(req: Request) {
       targetConvId = conv.id;
     } else {
       return NextResponse.json({ error: "conversationId or customerId is required." }, { status: 400 });
+    }
+
+    // 24-Hour Customer Service Window Enforcement (Meta Policy)
+    const activeConv = await prisma.conversation.findUnique({
+      where: { id: targetConvId },
+      select: { lastMessageAt: true },
+    });
+    const withinWindow = isWithin24HourWindow(activeConv?.lastMessageAt);
+    const isTemplate = Boolean(body.isTemplate || body.templateName || body.type === "template");
+
+    if (!withinWindow && !isTemplate) {
+      return NextResponse.json(
+        {
+          error: "Outside 24-hour customer service window. Free-form messages are blocked by Meta policies. Only approved message templates can be sent.",
+          code: "OUTSIDE_24_HOUR_WINDOW",
+          lastMessageAt: activeConv?.lastMessageAt,
+        },
+        { status: 403 }
+      );
     }
 
     const business = await prisma.business.findUnique({

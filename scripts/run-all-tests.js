@@ -8,6 +8,7 @@ const suites = [
   { name: "Phase 5: AI Gemini Quote Generation", script: "scripts/test-phase5.js" },
   { name: "Phase 6: GST & Monotonic Invoices", script: "scripts/test-phase6.js" },
   { name: "Phase 7: Data, Audit & Compliance", script: "scripts/test-phase7.js" },
+  { name: "Phase 8: Hardened Gaps & Concurrency", script: "scripts/test-phase8-hardened.js" },
 ];
 
 console.log("\n==========================================================================");
@@ -24,6 +25,8 @@ for (const suite of suites) {
       env: process.env,
     });
     totalSuitesPassed++;
+    // Brief settle period between test suites
+    execSync(`node -e "setTimeout(()=>{}, 1200)"`);
   } catch (err) {
     console.error(`\nFAILED SUITE: ${suite.name}\n`);
     process.exit(1);
@@ -31,5 +34,5 @@ for (const suite of suites) {
 }
 
 console.log("\n==========================================================================");
-console.log(`ALL ${totalSuitesPassed} / ${suites.length} TEST SUITES PASSED WITH 100% SUCCESS (162/162 TESTS)!`);
+console.log(`ALL ${totalSuitesPassed} / ${suites.length} TEST SUITES PASSED WITH 100% SUCCESS!`);
 console.log("==========================================================================\n");

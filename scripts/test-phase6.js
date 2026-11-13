@@ -50,6 +50,8 @@ async function setupPhase6Data() {
       state: "Maharashtra",
       address: "Bandra Kurla Complex",
       city: "Mumbai",
+      planId: "PRO",
+      planExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       users: {
         create: {
           email: `gst-alpha-${runId}@test.com`,
@@ -85,6 +87,8 @@ async function setupPhase6Data() {
       gstin: "07AAAAA0000A1Z5", // Delhi
       state: "Delhi",
       city: "New Delhi",
+      planId: "PRO",
+      planExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       users: {
         create: {
           email: `gst-beta-${runId}@test.com`,

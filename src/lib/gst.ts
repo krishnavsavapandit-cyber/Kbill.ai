@@ -170,10 +170,19 @@ export function resolveState(input?: string | null): { code: string; name: strin
   return null;
 }
 
+export const ALLOWED_GST_RATES = [0, 5, 12, 18, 28] as const;
+
+export interface GstCalculationItemInput {
+  amount: number;
+  taxRate?: number; // 0, 5, 12, 18, 28
+}
+
 export interface GstCalculationInput {
   subtotal: number;
-  taxRate?: number; // Total GST rate, e.g. 18.0
+  taxRate?: number; // Fallback tax rate if items not provided (default 18.0)
+  items?: GstCalculationItemInput[];
   discountAmount?: number;
+  isGstRegistered?: boolean; // When false, business operates in 'not GST-registered' Bill of Supply mode
   businessState?: string | null;
   businessGstin?: string | null;
   customerState?: string | null;
@@ -187,6 +196,8 @@ export interface GstCalculationResult {
   taxableAmount: number;
   totalTaxRate: number;
   isInterState: boolean;
+  isGstRegistered: boolean;
+  documentType: "TAX_INVOICE" | "BILL_OF_SUPPLY";
   placeOfSupply: string;
   placeOfSupplyStateCode: string;
   cgstRate: number;
@@ -197,23 +208,38 @@ export interface GstCalculationResult {
   igstAmount: number;
   totalTaxAmount: number;
   totalAmount: number;
+  itemTaxes?: Array<{
+    amount: number;
+    taxRate: number;
+    cgstAmount: number;
+    sgstAmount: number;
+    igstAmount: number;
+    totalTax: number;
+  }>;
 }
 
 /**
  * Deterministic GST Split Calculator:
  * Determines Intra-State vs Inter-State supply based on Place of Supply.
  *
- * Law Rule (IGST Act 2017):
+ * Law Rule (IGST Act 2017 & Section 31(3)(c) CGST Act):
+ * - If not GST-registered (or composition dealer): BILL OF SUPPLY with 0% tax.
  * - Supplier location == Place of Supply: INTRA-STATE (CGST + SGST split 50/50).
  * - Supplier location != Place of Supply: INTER-STATE (IGST applies in full).
+ * - Supports per-line GST rates: 0%, 5%, 12%, 18%, 28%.
  *
- * Tax math is rounded to 2 decimal places (paise precision).
+ * Tax math is rounded to 2 decimal places (integer paise precision).
  */
 export function calculateGst(input: GstCalculationInput): GstCalculationResult {
   const subtotal = Math.max(0, Number(input.subtotal) || 0);
   const discountAmount = Math.max(0, Number(input.discountAmount) || 0);
   const taxableAmount = Math.max(0, subtotal - discountAmount);
-  const totalTaxRate = input.taxRate !== undefined && input.taxRate !== null ? Number(input.taxRate) : 18.0;
+
+  // If business is explicitly not registered or has no GSTIN and isGstRegistered is false
+  const isGstRegistered =
+    input.isGstRegistered !== undefined
+      ? Boolean(input.isGstRegistered)
+      : Boolean(input.businessGstin && input.businessGstin.trim().length === 15);
 
   // 1. Resolve Supplier (Business) State Code
   let supplierStateCode: string = "27"; // Default fallback (Maharashtra)
@@ -251,8 +277,104 @@ export function calculateGst(input: GstCalculationInput): GstCalculationResult {
     }
   }
 
+  // Mode: NOT GST REGISTERED -> 0% Tax (Bill of Supply)
+  if (!isGstRegistered) {
+    return {
+      subtotal,
+      discountAmount,
+      taxableAmount,
+      totalTaxRate: 0,
+      isInterState: false,
+      isGstRegistered: false,
+      documentType: "BILL_OF_SUPPLY",
+      placeOfSupply: recipientStateName,
+      placeOfSupplyStateCode: recipientStateCode,
+      cgstRate: 0,
+      cgstAmount: 0,
+      sgstRate: 0,
+      sgstAmount: 0,
+      igstRate: 0,
+      igstAmount: 0,
+      totalTaxAmount: 0,
+      totalAmount: taxableAmount,
+      itemTaxes: input.items?.map((it) => ({
+        amount: it.amount,
+        taxRate: 0,
+        cgstAmount: 0,
+        sgstAmount: 0,
+        igstAmount: 0,
+        totalTax: 0,
+      })),
+    };
+  }
+
   // 3. Determine Inter-State vs Intra-State
   const isInterState = supplierStateCode !== recipientStateCode;
+
+  // 4. Calculate Taxes: either per-line or on subtotal
+  if (input.items && input.items.length > 0) {
+    let sumCgst = 0;
+    let sumSgst = 0;
+    let sumIgst = 0;
+
+    const itemTaxes = input.items.map((item) => {
+      const lineAmt = Math.max(0, Number(item.amount) || 0);
+      const rawRate = Number(item.taxRate !== undefined && item.taxRate !== null ? item.taxRate : 18.0);
+      const lineRate = ALLOWED_GST_RATES.includes(rawRate as any) ? rawRate : 18.0;
+
+      let lineCgst = 0;
+      let lineSgst = 0;
+      let lineIgst = 0;
+
+      if (isInterState) {
+        lineIgst = Math.round(((lineAmt * lineRate) / 100) * 100) / 100;
+      } else {
+        lineCgst = Math.round(((lineAmt * (lineRate / 2)) / 100) * 100) / 100;
+        lineSgst = Math.round(((lineAmt * (lineRate / 2)) / 100) * 100) / 100;
+      }
+
+      sumCgst += lineCgst;
+      sumSgst += lineSgst;
+      sumIgst += lineIgst;
+
+      return {
+        amount: lineAmt,
+        taxRate: lineRate,
+        cgstAmount: lineCgst,
+        sgstAmount: lineSgst,
+        igstAmount: lineIgst,
+        totalTax: isInterState ? lineIgst : lineCgst + lineSgst,
+      };
+    });
+
+    const totalTaxAmount = Math.round((sumCgst + sumSgst + sumIgst) * 100) / 100;
+    const totalAmount = Math.round((taxableAmount + totalTaxAmount) * 100) / 100;
+
+    return {
+      subtotal,
+      discountAmount,
+      taxableAmount,
+      totalTaxRate: isInterState ? (taxableAmount > 0 ? (sumIgst / taxableAmount) * 100 : 18.0) : (taxableAmount > 0 ? ((sumCgst + sumSgst) / taxableAmount) * 100 : 18.0),
+      isInterState,
+      isGstRegistered: true,
+      documentType: "TAX_INVOICE",
+      placeOfSupply: recipientStateName,
+      placeOfSupplyStateCode: recipientStateCode,
+      cgstRate: isInterState ? 0 : (taxableAmount > 0 ? (sumCgst / taxableAmount) * 100 : 9.0),
+      cgstAmount: Math.round(sumCgst * 100) / 100,
+      sgstRate: isInterState ? 0 : (taxableAmount > 0 ? (sumSgst / taxableAmount) * 100 : 9.0),
+      sgstAmount: Math.round(sumSgst * 100) / 100,
+      igstRate: isInterState ? (taxableAmount > 0 ? (sumIgst / taxableAmount) * 100 : 18.0) : 0,
+      igstAmount: Math.round(sumIgst * 100) / 100,
+      totalTaxAmount,
+      totalAmount,
+      itemTaxes,
+    };
+  }
+
+  // Fallback: Whole invoice single tax rate
+  const rawRate = Number(input.taxRate !== undefined && input.taxRate !== null ? input.taxRate : 18.0);
+  const totalTaxRate = ALLOWED_GST_RATES.includes(rawRate as any) ? rawRate : 18.0;
 
   let cgstRate = 0;
   let cgstAmount = 0;
@@ -262,11 +384,9 @@ export function calculateGst(input: GstCalculationInput): GstCalculationResult {
   let igstAmount = 0;
 
   if (isInterState) {
-    // Inter-State: Full IGST
     igstRate = totalTaxRate;
     igstAmount = Math.round(((taxableAmount * igstRate) / 100) * 100) / 100;
   } else {
-    // Intra-State: 50% CGST + 50% SGST
     cgstRate = totalTaxRate / 2;
     sgstRate = totalTaxRate / 2;
     cgstAmount = Math.round(((taxableAmount * cgstRate) / 100) * 100) / 100;
@@ -282,6 +402,8 @@ export function calculateGst(input: GstCalculationInput): GstCalculationResult {
     taxableAmount,
     totalTaxRate,
     isInterState,
+    isGstRegistered: true,
+    documentType: "TAX_INVOICE",
     placeOfSupply: recipientStateName,
     placeOfSupplyStateCode: recipientStateCode,
     cgstRate,

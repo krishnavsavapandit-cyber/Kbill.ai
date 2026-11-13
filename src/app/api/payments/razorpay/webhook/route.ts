@@ -139,6 +139,30 @@ export async function POST(req: Request) {
               },
             });
           }
+
+          // If plan purchase / subscription
+          if (paymentRecord.subscriptionId || paymentRecord.metadata) {
+            const meta = paymentRecord.metadata ? JSON.parse(paymentRecord.metadata) : null;
+            const planId = meta?.planId || "STARTER";
+            const biz = await tx.business.findUnique({
+              where: { id: paymentRecord.businessId },
+              select: { planExpiresAt: true },
+            });
+            const now = new Date();
+            const currentExpiry =
+              biz?.planExpiresAt && biz.planExpiresAt.getTime() > now.getTime()
+                ? new Date(biz.planExpiresAt)
+                : now;
+            const newExpiry = new Date(currentExpiry.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+            await tx.business.update({
+              where: { id: paymentRecord.businessId },
+              data: {
+                planId: planId.toUpperCase(),
+                planExpiresAt: newExpiry,
+              },
+            });
+          }
         }
       });
 

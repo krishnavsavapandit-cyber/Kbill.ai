@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { generateQuotationFromPrompt } from "@/lib/ai";
 import { requireBusiness } from "@/lib/auth";
 import { decryptSecret } from "@/lib/encryption";
+import { requireFeature } from "@/lib/plans";
 
 export async function POST(req: Request) {
   try {
@@ -22,6 +23,9 @@ export async function POST(req: Request) {
     if (!prompt || typeof prompt !== "string" || prompt.trim().length === 0) {
       return NextResponse.json({ error: "Please provide a description of the quote needed." }, { status: 400 });
     }
+
+    const planCheck = await requireFeature(businessId, "ai_quotes");
+    if (!planCheck.ok) return planCheck.response;
 
     const rawKey = business.integrationConfig?.geminiApiKey || process.env.GEMINI_API_KEY || "";
     const apiKey = decryptSecret(rawKey) || rawKey;

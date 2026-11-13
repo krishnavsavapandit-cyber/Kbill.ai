@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { sendWhatsAppTextMessage } from "@/lib/whatsapp";
+import { sendWhatsAppTextMessage, isWithin24HourWindow } from "@/lib/whatsapp";
 import { requireBusiness } from "@/lib/auth";
 import { decryptSecret } from "@/lib/encryption";
 
@@ -36,6 +36,20 @@ export async function POST(req: Request) {
           code: "NOT_A_PENDING_DRAFT",
         },
         { status: 400 }
+      );
+    }
+
+    // 24-Hour Customer Service Window Enforcement (Meta Policy)
+    const withinWindow = isWithin24HourWindow(draft.conversation.lastMessageAt);
+    const isTemplate = Boolean(body.isTemplate || body.templateName || body.type === "template");
+    if (!withinWindow && !isTemplate) {
+      return NextResponse.json(
+        {
+          error: "Outside 24-hour customer service window. This draft cannot be sent as free-form text. Please use an approved message template.",
+          code: "OUTSIDE_24_HOUR_WINDOW",
+          lastMessageAt: draft.conversation.lastMessageAt,
+        },
+        { status: 403 }
       );
     }
 

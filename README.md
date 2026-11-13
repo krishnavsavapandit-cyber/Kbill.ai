@@ -2,20 +2,21 @@
 
 BusinessOS AI is an audited, multi-tenant business management and operating system designed for service businesses and independent professionals in India. It unifies appointment scheduling, GST-compliant invoicing, Razorpay payments, customer CRM, and Meta WhatsApp Cloud API messaging into a single platform.
 
-Every architectural invariant in this codebase has been subjected to a zero-trust hostile security audit and verified through an automated 162-test verification suite.
+Every architectural invariant in this codebase has been subjected to a zero-trust hostile security audit and verified through an automated 197-test verification suite across 8 comprehensive audit phases.
 
 ---
 
 ## Audited Architectural Capabilities
 
 - **Multi-Tenancy & Authorization**: Single-tenant data isolation enforced by `requireBusiness()` helper on every route. Body-based IDOR defense, whitelist query scoping, and unauthenticated redirects to `/login`.
-- **Concurrency-Safe Booking**: Database-enforced partial unique slot indexes on appointments with UTC ISO-8601 storage and Asia/Kolkata timezone translation. Proven safe against 20 simultaneous parallel race-condition requests.
+- **Subscription Entitlements & Feature Gating**: Honest 30-day one-time purchase plans (`FREE`, `STARTER`, `PRO`, `ENTERPRISE`). `requireFeature()` gating caps Free tier to 5 customers, 5 invoices, and 5 appointments, with automated expiration fallback and verified payment extension (+30 days).
+- **Concurrency-Safe Booking**: Database-enforced partial unique slot indexes on appointments with interval overlap logic `(startTime < reqEndDate AND endTime > reqStartDate)` in serialized transactions. Per-staff scheduling scoping, boundary adjacent slot support, and proven safe against 20 simultaneous parallel race-condition requests.
 - **Cryptographic Payments (Razorpay)**: Server-side amount computation from DB invoice rows, order-to-invoice binding, payment replay rejection, timing-safe HMAC signature verification on raw request buffers, and idempotent webhook settlement.
-- **WhatsApp Cloud API (Meta)**: Webhook verify token handshake, timing-safe HMAC-SHA256 signature verification on raw body, message deduplication by Meta `wamid`, customer auto-creation, and human-in-the-loop AI reply draft approval flow.
+- **WhatsApp Cloud API (Meta)**: Webhook verify token handshake, timing-safe HMAC-SHA256 signature verification on raw body, message deduplication by Meta `wamid`, customer auto-creation, 24-hour customer service window enforcement (free-form blocked outside 24h, templates permitted), and human-in-the-loop AI reply draft approval flow.
 - **AI Quotation Safety (Google Gemini)**: Zod schema validation, service catalog grounding with enforced database pricing, uncataloged item flagging, and prompt injection sanitization.
-- **Indian GST Compliance**: 15-character GSTIN validation, automatic state code extraction (01-38), HSN/SAC code validation, intra-state (9% CGST + 9% SGST) vs inter-state (18% IGST) tax split based on Place of Supply, and monotonic sequential invoice numbering per financial year (`INV/2026-27/0001`).
+- **Indian GST Compliance**: 15-character GSTIN validation, automatic state code extraction (01-38), HSN/SAC code validation, non-GST registered mode (`BILL_OF_SUPPLY`), per-line GST tax slabs (0%, 5%, 12%, 18%, 28%), intra-state vs inter-state tax split, and monotonic sequential invoice numbering per financial year (`INV/2026-27/0001`).
 - **Data Protection & DPDP Act 2023**: Database trigger append-only audit log on `ActivityLog`, customer data dossier export, and customer PII anonymization preserving statutory 72-month GST tax invoice records.
-- **Security & Secrets**: Sliding-window rate limiting on public endpoints (`/api/auth/*`, webhooks, booking) and AES-256-GCM symmetric encryption at rest for third-party API credentials (`enc:v1:<iv>:<tag>:<ciphertext>`).
+- **Security & Secrets**: Anti-spoofed edge client IP derivation (rejecting client `X-Forwarded-For` injection), sliding-window rate limiting on public endpoints, and AES-256-GCM symmetric encryption at rest for third-party API credentials (`enc:v1:<iv>:<tag>:<ciphertext>`).
 
 For detailed audit proof and test logs, see [AUDIT.md](./AUDIT.md).
 
@@ -60,7 +61,7 @@ npm run seed:demo
 
 ### 3. Running the Test Suite
 ```bash
-# Run the complete 162-test hostile verification suite
+# Run the complete 197-test hostile verification suite
 npm test
 ```
 

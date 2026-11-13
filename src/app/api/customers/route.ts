@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireBusiness } from "@/lib/auth";
 import { validateGSTIN } from "@/lib/gst";
+import { requireFeature } from "@/lib/plans";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +52,9 @@ export async function POST(req: Request) {
     const auth = await requireBusiness(req);
     if (!auth.ok) return auth.response;
     const { businessId } = auth;
+
+    const planCheck = await requireFeature(businessId, "create_customer");
+    if (!planCheck.ok) return planCheck.response;
 
     const body = await req.json();
     const parsed = CreateCustomerSchema.safeParse(body);
