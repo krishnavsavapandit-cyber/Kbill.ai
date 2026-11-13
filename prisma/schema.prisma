@@ -1,0 +1,362 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String
+  passwordHash String?
+  role         String        @default("OWNER")
+  businessId   String?
+  business     Business?     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  ActivityLog  ActivityLog[]
+
+  @@index([businessId])
+}
+
+model Business {
+  id                String             @id @default(cuid())
+  name              String
+  slug              String             @unique
+  category          String?
+  currency          String             @default("INR")
+  phone             String?
+  email             String?
+  address           String?
+  city              String?
+  state             String?
+  pincode           String?
+  gstin             String?
+  logoUrl           String?
+  brandColor        String?            @default("#4F46E5")
+  workingHoursStart String             @default("09:00")
+  workingHoursEnd   String             @default("18:00")
+  workingDays       String             @default("Monday,Tuesday,Wednesday,Thursday,Friday,Saturday")
+  timezone          String             @default("Asia/Kolkata")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  users             User[]
+  customers         Customer[]
+  services          Service[]
+  quotations        Quotation[]
+  invoices          Invoice[]
+  payments          Payment[]
+  appointments      Appointment[]
+  conversations     Conversation[]
+  messages          Message[]
+  subscriptions     Subscription[]
+  activityLogs      ActivityLog[]
+  invoiceSequences  InvoiceSequence[]
+  integrationConfig IntegrationConfig?
+}
+
+model Customer {
+  id            String         @id @default(cuid())
+  businessId    String
+  business      Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name          String
+  email         String?
+  phone         String
+  company       String?
+  gstin         String?
+  address       String?
+  city          String?
+  state         String?
+  notes         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  quotations    Quotation[]
+  invoices      Invoice[]
+  appointments  Appointment[]
+  conversations Conversation[]
+
+  @@index([businessId])
+  @@index([phone])
+}
+
+model Service {
+  id              String        @id @default(cuid())
+  businessId      String
+  business        Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  hsnSac          String?
+  durationMinutes Int           @default(30)
+  bufferMinutes   Int           @default(10)
+  price           Float         @default(0)
+  currency        String        @default("INR")
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  appointments    Appointment[]
+
+  @@index([businessId])
+}
+
+model Quotation {
+  id              String          @id @default(cuid())
+  quotationNumber String
+  businessId      String
+  business        Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customerId      String
+  customer        Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  status          String          @default("DRAFT") // DRAFT, SENT, ACCEPTED, DECLINED, EXPIRED, INVOICED
+  issueDate       DateTime        @default(now())
+  validUntil      DateTime
+  subtotal        Float           @default(0)
+  taxRate         Float           @default(18.0) // 18% GST standard in India
+  taxAmount       Float           @default(0)
+  discountRate    Float           @default(0)
+  discountAmount  Float           @default(0)
+  totalAmount     Float           @default(0)
+  placeOfSupply   String?
+  isInterState    Boolean         @default(false)
+  cgstRate        Float           @default(0)
+  cgstAmount      Float           @default(0)
+  sgstRate        Float           @default(0)
+  sgstAmount      Float           @default(0)
+  igstRate        Float           @default(0)
+  igstAmount      Float           @default(0)
+  notes           String?
+  terms           String?
+  pdfUrl          String?
+  invoiceId       String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  items           QuotationItem[]
+  invoices        Invoice[]
+
+  @@unique([businessId, quotationNumber])
+  @@index([businessId])
+  @@index([customerId])
+}
+
+model QuotationItem {
+  id          String    @id @default(cuid())
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  description String
+  hsnSac      String?
+  quantity    Float     @default(1)
+  unitPrice   Float     @default(0)
+  amount      Float     @default(0)
+  serviceId   String?
+
+  @@index([quotationId])
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  invoiceNumber  String
+  businessId     String
+  business       Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  quotationId    String?
+  quotation      Quotation?    @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+  status         String        @default("ISSUED") // DRAFT, ISSUED, PAID, PARTIAL, OVERDUE, CANCELLED
+  issueDate      DateTime      @default(now())
+  dueDate        DateTime
+  subtotal       Float         @default(0)
+  taxAmount      Float         @default(0)
+  discountAmount Float         @default(0)
+  totalAmount    Float         @default(0)
+  amountPaid     Float         @default(0)
+  placeOfSupply  String?
+  isInterState   Boolean       @default(false)
+  cgstRate       Float         @default(0)
+  cgstAmount     Float         @default(0)
+  sgstRate       Float         @default(0)
+  sgstAmount     Float         @default(0)
+  igstRate       Float         @default(0)
+  igstAmount     Float         @default(0)
+  financialYear  String?
+  sequenceNumber Int?
+  notes          String?
+  pdfUrl         String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  items          InvoiceItem[]
+  payments       Payment[]
+
+  @@unique([businessId, invoiceNumber])
+  @@index([businessId])
+  @@index([customerId])
+}
+
+model InvoiceItem {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  hsnSac      String?
+  quantity    Float    @default(1)
+  unitPrice   Float    @default(0)
+  amount      Float    @default(0)
+  serviceId   String?
+
+  @@index([invoiceId])
+}
+
+model InvoiceSequence {
+  id            String   @id @default(cuid())
+  businessId    String
+  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  financialYear String
+  currentNumber Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([businessId, financialYear])
+  @@index([businessId])
+}
+
+model Payment {
+  id                 String        @id @default(cuid())
+  businessId         String
+  business           Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoiceId          String?
+  invoice            Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  subscriptionId     String?
+  subscription       Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  amount             Float
+  currency           String        @default("INR")
+  status             String        @default("PENDING") // PENDING, SUCCESSFUL, FAILED, REFUNDED
+  paymentMethod      String?       // RAZORPAY_UPI, RAZORPAY_CARD, RAZORPAY_NETBANKING, CASH, BANK_TRANSFER
+  razorpayOrderId    String?
+  razorpayPaymentId  String?
+  razorpaySignature  String?
+  receiptNumber      String?
+  metadata           String?
+  verifiedAt         DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([businessId])
+  @@index([invoiceId])
+  @@index([razorpayOrderId])
+}
+
+model Appointment {
+  id            String    @id @default(cuid())
+  businessId    String
+  business      Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customerId    String
+  customer      Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  serviceId     String
+  service       Service   @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  startTime     DateTime
+  endTime       DateTime
+  status        String    @default("CONFIRMED") // PENDING, CONFIRMED, COMPLETED, CANCELLED, NO_SHOW
+  customerNotes String?
+  staffNotes    String?
+  reminderSent  Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([businessId])
+  @@index([customerId])
+  @@index([startTime, endTime])
+}
+
+model Conversation {
+  id              String    @id @default(cuid())
+  businessId      String
+  business        Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customerId      String
+  customer        Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  channel         String    @default("WHATSAPP")
+  lastMessageAt   DateTime  @default(now())
+  lastMessageText String?
+  unreadCount     Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  messages        Message[]
+
+  @@unique([businessId, customerId, channel])
+  @@index([businessId])
+  @@index([customerId])
+}
+
+model Message {
+  id               String       @id @default(cuid())
+  conversationId   String
+  conversation     Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  businessId       String
+  business         Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  direction        String       // INBOUND, OUTBOUND
+  senderType       String       // CUSTOMER, BUSINESS_USER, AI_ASSISTANT
+  body             String
+  status           String       @default("SENT") // PENDING_APPROVAL, QUEUED, SENT, DELIVERED, READ, FAILED
+  metaMessageId    String?      // Meta wamid: wamid.HBgM...
+  isAiGenerated    Boolean      @default(false)
+  aiConfidence     Float?
+  approvedByUserId String?
+  approvedAt       DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([conversationId])
+  @@index([businessId])
+  @@index([metaMessageId])
+}
+
+model Subscription {
+  id                     String    @id @default(cuid())
+  businessId             String
+  business               Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  plan                   String    @default("STARTER") // STARTER (₹199), PRO (₹499), BUSINESS (₹999)
+  status                 String    @default("ACTIVE") // ACTIVE, PAST_DUE, CANCELLED, TRIAL
+  currentPeriodStart     DateTime  @default(now())
+  currentPeriodEnd       DateTime
+  cancelAtPeriodEnd      Boolean   @default(false)
+  razorpaySubscriptionId String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  payments               Payment[]
+
+  @@index([businessId])
+}
+
+model ActivityLog {
+  id          String   @id @default(cuid())
+  businessId  String
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action      String
+  entityType  String
+  entityId    String
+  description String
+  metadata    String?
+  createdAt   DateTime @default(now())
+
+  @@index([businessId])
+  @@index([createdAt])
+}
+
+model IntegrationConfig {
+  id                     String   @id @default(cuid())
+  businessId             String   @unique
+  business               Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  geminiApiKey           String?
+  metaPhoneNumberId      String?
+  metaAccessToken        String?
+  metaWabaId             String?
+  metaWebhookVerifyToken String?  @default("businessos_webhook_token_2026")
+  metaAppSecret          String?
+  razorpayKeyId          String?
+  razorpayKeySecret      String?
+  razorpayWebhookSecret  String?
+  isRazorpayLive         Boolean  @default(false)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+}
